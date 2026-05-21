@@ -496,25 +496,10 @@
       <h3 id="demo-title">Book a Demo</h3>
       <p class="modal-sub">Fill out the form below and we'll get back to you shortly.</p>
 
-      <!-- Hidden iframe receives the form POST so we never trigger CORS/CORB.
-           FormSubmit.co processes the submission server-side and emails it
-           to niteesh@arcrelease.com. -->
-      <iframe name="fs-iframe" id="fs-iframe" tabindex="-1" aria-hidden="true"
-              style="display:none;width:0;height:0;border:0"></iframe>
-
-      <form id="demo-form" class="demo-form"
-            action="https://formsubmit.co/niteesh@arcrelease.com"
-            method="POST"
-            target="fs-iframe"
-            novalidate>
-        <!-- FormSubmit.co configuration fields (all start with underscore) -->
-        <input type="hidden" name="_subject" id="hidden-subject" value="New ArcRelease Demo Request" />
-        <input type="hidden" name="_template" value="table" />
-        <input type="hidden" name="_captcha" value="false" />
-        <input type="hidden" name="_next" value="https://formsubmit.co/thanks" />
+      <form id="demo-form" class="demo-form" novalidate>
         <!-- Honeypot field for spam bots (must stay empty) -->
         <div class="hp-field" aria-hidden="true">
-          <label>Don't fill this out: <input type="text" name="_honey" tabindex="-1" autocomplete="off" /></label>
+          <label>Don't fill this out: <input type="text" name="botcheck" id="botcheck" tabindex="-1" autocomplete="off" /></label>
         </div>
         <div class="form-row">
           <div class="form-field">
@@ -553,6 +538,8 @@
   <!-- Toast container -->
   <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
+  <!-- EmailJS SDK (client-side email via your own Gmail/SMTP) -->
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

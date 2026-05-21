@@ -128,23 +128,25 @@
   };
 
   /* ====================================================
-     Demo Form — FormSubmit.co via native form POST + hidden iframe
-     - Avoids CORS / CORB entirely (never reads the response)
-     - Form posts natively to https://formsubmit.co/<recipient-email>
-     - The hidden <iframe name="fs-iframe"> receives the response
-     - We listen to that iframe's `load` event to know when the
-       submission completed
-     - First submission triggers a one-time confirmation email to the
-       recipient. Click the link inside, then submissions go through.
+     Demo Form — EmailJS integration
+     - Sends emails via your own Gmail/SMTP connected to EmailJS
+     - Recipient is configured in the EmailJS template
+       (currently: arcreleasekk@gmail.com)
+     - Real async/await with response detection: success or error toasts
+       reflect what actually happened on EmailJS's side.
      ==================================================== */
+  const EMAILJS_PUBLIC_KEY  = 'euzPcVvEliiH68O4N';
+  const EMAILJS_SERVICE_ID  = 'service_kutj8e9';
+  const EMAILJS_TEMPLATE_ID = 'template_eiu4kk4';
+
+  // Initialise the EmailJS SDK once (loaded from CDN in index.html)
+  if (window.emailjs && typeof window.emailjs.init === 'function') {
+    window.emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+  }
+
   const form = document.getElementById('demo-form');
-  const iframe = document.getElementById('fs-iframe');
   const submitBtn = form.querySelector('button[type="submit"]');
   const submitBtnHTML = submitBtn.innerHTML;
-  const subjectInput = document.getElementById('hidden-subject');
-
-  let submissionInProgress = false;
-  let submissionTimeoutId = null;
 
   const setSubmitting = (isSubmitting) => {
     submitBtn.disabled = isSubmitting;
@@ -155,41 +157,18 @@
       : submitBtnHTML;
   };
 
-  const finishSubmission = (success, firstName) => {
-    if (!submissionInProgress) return;
-    submissionInProgress = false;
-    if (submissionTimeoutId) {
-      clearTimeout(submissionTimeoutId);
-      submissionTimeoutId = null;
-    }
-    setSubmitting(false);
-    if (success) {
-      showToast({
-        title: 'Request received!',
-        desc: `Thanks ${firstName}, we'll be in touch within 24 hours.`,
-      });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    // Honeypot: if filled, silently "succeed" without actually sending
+    const honeypot = document.getElementById('botcheck');
+    if (honeypot && honeypot.value.trim()) {
       form.reset();
       closeModal();
-    } else {
-      showToast({
-        title: 'Submission timed out',
-        desc: 'Please try again, or email us directly.',
-        type: 'error',
-      });
+      return;
     }
-  };
 
-  // The iframe fires `load` once when the page first renders (initial blank
-  // page). We ignore that and only treat subsequent loads as "submission
-  // complete".
-  iframe.addEventListener('load', () => {
-    if (!submissionInProgress) return;
-    const firstName = (document.getElementById('firstName').value || '').trim() || 'there';
-    finishSubmission(true, firstName);
-  });
-
-  form.addEventListener('submit', (e) => {
-    // Validate before letting the native submission proceed
+    // Validate required fields
     const required = ['firstName', 'lastName', 'email', 'mobile'];
     let valid = true;
     required.forEach((id) => {
@@ -209,8 +188,6 @@
     }
 
     if (!valid) {
-      // Block the native submission and show error
-      e.preventDefault();
       showToast({
         title: 'Please fill required fields',
         desc: 'First name, last name, valid email, and mobile are required.',
@@ -219,24 +196,72 @@
       return;
     }
 
-    // Set a dynamic, useful subject line
+    // Collect values
     const firstName = document.getElementById('firstName').value.trim();
     const lastName = document.getElementById('lastName').value.trim();
-    if (subjectInput) {
-      subjectInput.value = `New ArcRelease Demo Request — ${firstName} ${lastName}`;
+    const email = emailEl.value.trim();
+    const mobile = document.getElementById('mobile').value.trim();
+    const org = document.getElementById('org').value.trim();
+    const comments = document.getElementById('comments').value.trim();
+
+    // Template parameters — must match the variable names in your
+    // EmailJS template (e.g. {{first_name}}, {{from_email}}, etc.)
+    const templateParams = {
+      first_name: firstName,
+      last_name: lastName,
+      from_email: email,
+      from_name: `${firstName} ${lastName}`,
+      mobile: mobile,
+      organization: org || '—',
+      comments: comments || '—',
+      submitted_at: new Date().toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }),
+    };
+
+    if (!window.emailjs || typeof window.emailjs.send !== 'function') {
+      showToast({
+        title: 'Email service not loaded',
+        desc: 'Please refresh the page and try again.',
+        type: 'error',
+      });
+      return;
     }
 
-    // Mark as submitting and start a safety timeout
-    submissionInProgress = true;
     setSubmitting(true);
-    submissionTimeoutId = setTimeout(() => {
-      // If the iframe never loads back, still let the user retry
-      finishSubmission(false, firstName);
-    }, 12000);
+    try {
+      const res = await window.emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        templateParams
+      );
 
-    // IMPORTANT: do NOT preventDefault here. The browser will do a native
-    // POST submission of all form fields (including the hidden access_key,
-    // subject, from_name, redirect, botcheck) targeting our hidden iframe.
+      if (res && (res.status === 200 || res.status === 201)) {
+        showToast({
+          title: 'Request received!',
+          desc: `Thanks ${firstName}, we'll be in touch within 24 hours.`,
+        });
+        form.reset();
+        closeModal();
+      } else {
+        showToast({
+          title: 'Could not send request',
+          desc: 'Please try again in a moment, or email us directly.',
+          type: 'error',
+        });
+      }
+    } catch (err) {
+      // EmailJS rejects with { status, text } on failure
+      const msg = (err && (err.text || err.message)) || 'Network error. Please try again.';
+      showToast({
+        title: 'Could not send request',
+        desc: msg,
+        type: 'error',
+      });
+    } finally {
+      setSubmitting(false);
+    }
   });
 
   // Clear error on input
